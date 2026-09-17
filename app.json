@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "OneBuddy Medicine Delivery",
+    "slug": "onebuddy-medicine-delivery",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#F6F8F3"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "infoPlist": {
+        "CADisableMinimumFrameDurationOnPhone": true
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#F6F8F3"
+      }
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
