@@ -17,6 +17,8 @@ import { MEDICINE_IMAGES } from '../data/medicineImages';
 import { useApp } from '../context/AppContext';
 import Icon from '../components/Icon';
 import SummaryLine from '../components/SummaryLine';
+import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import {
   SearchIcon,
   CloseIcon,
@@ -32,7 +34,11 @@ export default function CartScreen() {
     cartTotal,
     cartHasRx,
     rxUploaded,
-    setRxUploaded,
+    rxFileUri,
+    rxFileName,
+    rxFileType,
+    attachRx,
+    removeRx,
     addToCart,
     computeSummary,
     couponApplied,
@@ -52,28 +58,86 @@ export default function CartScreen() {
   // State for Quantity Picker Modal
   const [qtyModalItem, setQtyModalItem] = useState<string | null>(null);
 
-  // State for Upload Prescription Action Sheet
+  // State for Upload Prescription Action Sheet & Full Preview
   const [showRxModal, setShowRxModal] = useState(false);
-  const [rxFileName, setRxFileName] = useState<string | null>(
-    rxUploaded ? 'Dr_Sharma_Rx_Prescription.jpg' : null
-  );
+  const [showRxPreview, setShowRxPreview] = useState(false);
 
-  const handleSelectRxOption = (source: string) => {
-    setShowRxModal(false);
-    setRxUploaded(true);
-    const fileName =
-      source === 'camera'
-        ? 'Camera_Photo_Rx_Scan.jpg'
-        : source === 'gallery'
-        ? 'Prescription_Gallery_Doc.jpg'
-        : 'Doctor_Prescription_Signed.pdf';
-    setRxFileName(fileName);
-    showToast(`Prescription attached from ${source}!`);
+  // Real Camera Capture from Phone
+  const handleCameraCapture = async () => {
+    try {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        showToast('Camera permission is required to click prescription photos');
+        return;
+      }
+      setShowRxModal(false);
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        quality: 0.85,
+      });
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        const fileName = asset.fileName || `Rx_Camera_${Date.now()}.jpg`;
+        attachRx(asset.uri, fileName, 'image');
+        showToast('Prescription captured from Camera!');
+      }
+    } catch (err) {
+      console.error('Camera capture error:', err);
+      showToast('Could not open camera on this device');
+    }
+  };
+
+  // Real Photo Gallery Picker from Phone
+  const handleGalleryPick = async () => {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        showToast('Gallery permission is required to choose prescription photos');
+        return;
+      }
+      setShowRxModal(false);
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        quality: 0.85,
+      });
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        const fileName = asset.fileName || `Rx_Gallery_${Date.now()}.jpg`;
+        attachRx(asset.uri, fileName, 'image');
+        showToast('Prescription selected from Gallery!');
+      }
+    } catch (err) {
+      console.error('Gallery pick error:', err);
+      showToast('Could not open photo gallery');
+    }
+  };
+
+  // Real Device Document / PDF / File Picker from Phone
+  const handleDocumentPick = async () => {
+    try {
+      setShowRxModal(false);
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'image/*'],
+        copyToCacheDirectory: true,
+      });
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        const isImg = asset.mimeType?.startsWith('image/') || (asset.name && /\.(jpg|jpeg|png|webp)$/i.test(asset.name));
+        attachRx(asset.uri, asset.name || 'Prescription_Document.pdf', isImg ? 'image' : 'file');
+        showToast('Prescription document attached!');
+      }
+    } catch (err) {
+      console.error('Document pick error:', err);
+      showToast('Could not open document picker');
+    }
   };
 
   const handleRemoveRx = () => {
-    setRxUploaded(false);
-    setRxFileName(null);
+    setShowRxModal(false);
+    setShowRxPreview(false);
+    removeRx();
     showToast('Prescription removed');
   };
 
@@ -567,15 +631,21 @@ export default function CartScreen() {
           <Text style={{ fontSize: 22, fontWeight: '800', color: COLORS.greenDark }}>+</Text>
         </TouchableOpacity>
 
-        {/* ── Upload a Prescription Card (Interactive Modal Trigger) ── */}
+        {/* ── Upload a Prescription Card (Real Camera, Gallery & File Integration) ── */}
         <TouchableOpacity
-          onPress={() => setShowRxModal(true)}
+          onPress={() => {
+            if (rxUploaded && rxFileType === 'image' && rxFileUri) {
+              setShowRxPreview(true);
+            } else {
+              setShowRxModal(true);
+            }
+          }}
           style={{
             flexDirection: 'row',
             alignItems: 'center',
             backgroundColor: COLORS.card,
             borderRadius: 16,
-            borderWidth: 1,
+            borderWidth: 1.5,
             borderColor: rxUploaded ? COLORS.green : COLORS.line,
             padding: 14,
             marginBottom: 12,
@@ -589,27 +659,34 @@ export default function CartScreen() {
         >
           <View
             style={{
-              width: 44,
-              height: 44,
+              width: 50,
+              height: 50,
               borderRadius: 12,
               backgroundColor: rxUploaded ? COLORS.greenLight : '#FFF7ED',
               borderWidth: 1,
               borderColor: rxUploaded ? COLORS.greenBorder : '#FED7AA',
               alignItems: 'center',
               justifyContent: 'center',
+              overflow: 'hidden',
             }}
           >
-            {rxUploaded ? (
-              <Text style={{ fontSize: 20 }}>✅</Text>
+            {rxUploaded && rxFileType === 'image' && rxFileUri ? (
+              <Image
+                source={{ uri: rxFileUri }}
+                style={{ width: '100%', height: '100%' }}
+                resizeMode="cover"
+              />
+            ) : rxUploaded ? (
+              <Text style={{ fontSize: 26 }}>📄</Text>
             ) : (
-              <PrescriptionDocIcon size={24} color="#EA580C" />
+              <PrescriptionDocIcon size={26} color="#EA580C" />
             )}
           </View>
 
           <View style={{ flex: 1, marginHorizontal: 12 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.ink }}>
-                Upload a Prescription
+                {rxUploaded ? 'Prescription Attached' : 'Upload a Prescription'}
               </Text>
               {rxUploaded && (
                 <View
@@ -622,19 +699,38 @@ export default function CartScreen() {
                   }}
                 >
                   <Text style={{ fontSize: 10.5, fontWeight: '700', color: COLORS.greenDark }}>
-                    Uploaded
+                    Attached
                   </Text>
                 </View>
               )}
             </View>
-            <Text style={{ fontSize: 12, color: COLORS.inkSoft, marginTop: 3, lineHeight: 16 }}>
+            <Text style={{ fontSize: 12, color: COLORS.inkSoft, marginTop: 3, lineHeight: 16 }} numberOfLines={1}>
               {rxUploaded
-                ? `Attached: ${rxFileName || 'Dr_Sharma_Rx.jpg'} (Tap to manage)`
-                : 'Please upload a valid prescription given by your doctor. This is optional'}
+                ? `${rxFileName || 'Prescription file'} (Tap to view or change)`
+                : 'Take a photo or upload from Gallery/Files'}
             </Text>
           </View>
 
-          <Text style={{ fontSize: 20, color: COLORS.inkSoft, fontWeight: '600' }}>›</Text>
+          {rxUploaded ? (
+            <TouchableOpacity
+              onPress={() => setShowRxModal(true)}
+              style={{
+                backgroundColor: COLORS.greenPale,
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: COLORS.greenBorder,
+              }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.greenDark }}>
+                Manage
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <Text style={{ fontSize: 20, color: COLORS.inkSoft, fontWeight: '600' }}>›</Text>
+          )}
         </TouchableOpacity>
 
         {/* ── Apply Coupon Card ── */}
@@ -840,9 +936,9 @@ export default function CartScreen() {
                   Attach a clear picture or document of your prescription written by a registered doctor.
                 </Text>
 
-                {/* Option 1: Camera */}
+                {/* Option 1: Camera (Launches real device camera) */}
                 <TouchableOpacity
-                  onPress={() => handleSelectRxOption('camera')}
+                  onPress={handleCameraCapture}
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
@@ -861,15 +957,15 @@ export default function CartScreen() {
                       Camera
                     </Text>
                     <Text style={{ fontSize: 12, color: COLORS.inkSoft, marginTop: 2 }}>
-                      Click a fresh picture of the doctor's prescription
+                      Open phone camera to take a photo of doctor's prescription
                     </Text>
                   </View>
                   <Text style={{ fontSize: 18, color: COLORS.greenDark }}>›</Text>
                 </TouchableOpacity>
 
-                {/* Option 2: Gallery */}
+                {/* Option 2: Gallery (Launches real phone photo gallery) */}
                 <TouchableOpacity
-                  onPress={() => handleSelectRxOption('gallery')}
+                  onPress={handleGalleryPick}
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
@@ -888,15 +984,15 @@ export default function CartScreen() {
                       Photo Gallery
                     </Text>
                     <Text style={{ fontSize: 12, color: COLORS.inkSoft, marginTop: 2 }}>
-                      Select photo or screenshot saved in your gallery
+                      Select photo or scan saved in your phone gallery
                     </Text>
                   </View>
                   <Text style={{ fontSize: 18, color: COLORS.greenDark }}>›</Text>
                 </TouchableOpacity>
 
-                {/* Option 3: Document / PDF */}
+                {/* Option 3: Document / PDF (Launches real device file picker) */}
                 <TouchableOpacity
-                  onPress={() => handleSelectRxOption('files')}
+                  onPress={handleDocumentPick}
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
@@ -915,7 +1011,7 @@ export default function CartScreen() {
                       Files & PDFs
                     </Text>
                     <Text style={{ fontSize: 12, color: COLORS.inkSoft, marginTop: 2 }}>
-                      Upload electronic prescription PDF or scan
+                      Select prescription PDF or document from phone files
                     </Text>
                   </View>
                   <Text style={{ fontSize: 18, color: COLORS.greenDark }}>›</Text>
@@ -940,6 +1036,100 @@ export default function CartScreen() {
             </TouchableWithoutFeedback>
           </View>
         </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* ── Prescription Full Photo Preview Modal ── */}
+      <Modal visible={showRxPreview} transparent animationType="fade">
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.85)',
+            justifyContent: 'center',
+            alignItems: 'center',
+            padding: 16,
+          }}
+        >
+          <View
+            style={{
+              width: '100%',
+              maxWidth: 420,
+              backgroundColor: COLORS.card,
+              borderRadius: 20,
+              overflow: 'hidden',
+            }}
+          >
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: 16,
+                borderBottomWidth: 1,
+                borderBottomColor: COLORS.line,
+              }}
+            >
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <Text style={{ fontSize: 15, fontWeight: '800', color: COLORS.ink }} numberOfLines={1}>
+                  {rxFileName || 'Doctor Prescription'}
+                </Text>
+                <Text style={{ fontSize: 11.5, color: COLORS.inkSoft, marginTop: 2 }}>
+                  Captured / Selected from phone
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowRxPreview(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <CloseIcon size={20} color={COLORS.inkSoft} />
+              </TouchableOpacity>
+            </View>
+
+            {rxFileUri ? (
+              <View style={{ width: '100%', height: 360, backgroundColor: '#000000', alignItems: 'center', justifyContent: 'center' }}>
+                <Image
+                  source={{ uri: rxFileUri }}
+                  style={{ width: '100%', height: '100%' }}
+                  resizeMode="contain"
+                />
+              </View>
+            ) : (
+              <View style={{ padding: 40, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 40, marginBottom: 8 }}>📄</Text>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.ink }}>{rxFileName}</Text>
+              </View>
+            )}
+
+            <View style={{ flexDirection: 'row', padding: 14, gap: 10 }}>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowRxPreview(false);
+                  setShowRxModal(true);
+                }}
+                style={{
+                  flex: 1,
+                  paddingVertical: 12,
+                  borderRadius: 10,
+                  backgroundColor: COLORS.bg,
+                  borderWidth: 1,
+                  borderColor: COLORS.line,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '700', color: COLORS.ink }}>Replace</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={handleRemoveRx}
+                style={{
+                  flex: 1,
+                  paddingVertical: 12,
+                  borderRadius: 10,
+                  backgroundColor: '#FEE2E2',
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: '700', color: '#DC2626' }}>Remove</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
 
       {/* ── View Bill Breakdown Modal ── */}

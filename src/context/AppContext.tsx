@@ -17,6 +17,11 @@ interface AppContextValue {
   screen: Screen;
   cart: Record<string, number>;
   rxUploaded: boolean;
+  rxFileUri: string | null;
+  rxFileName: string | null;
+  rxFileType: 'image' | 'file' | null;
+  attachRx: (uri: string, name: string, type: 'image' | 'file') => void;
+  removeRx: () => void;
   currentCategory: string;
   currentGroup: string;
   currentSubcat: string;
@@ -114,6 +119,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const [cart, setCart] = useState<Record<string, number>>({});
   const [rxUploaded, setRxUploaded] = useState(false);
+  const [rxFileUri, setRxFileUri] = useState<string | null>(null);
+  const [rxFileName, setRxFileName] = useState<string | null>(null);
+  const [rxFileType, setRxFileType] = useState<'image' | 'file' | null>(null);
+
+  const attachRx = useCallback((uri: string, name: string, type: 'image' | 'file') => {
+    setRxFileUri(uri);
+    setRxFileName(name);
+    setRxFileType(type);
+    setRxUploaded(true);
+  }, []);
+
+  const removeRx = useCallback(() => {
+    setRxFileUri(null);
+    setRxFileName(null);
+    setRxFileType(null);
+    setRxUploaded(false);
+  }, []);
   const [lastOrder, setLastOrder] = useState<Record<string, number>>({});
   const [lastOrderId, setLastOrderId] = useState('#OB0000');
   const [payMethod, setPayMethod] = useState<PayMethod>('upi');
@@ -327,6 +349,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setOrders((prev) => [newOrder, ...prev]);
     setCart({});
     setRxUploaded(false);
+    setRxFileUri(null);
+    setRxFileName(null);
+    setRxFileType(null);
     setNavHistory([{ screen: 'browse' }, { screen: 'confirm' }]);
   }, [cart, cartCount, cartTotal, computeSummary]);
 
@@ -406,6 +431,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     addToCart,
     reorder,
+    rxFileUri,
+    rxFileName,
+    rxFileType,
+    attachRx,
+    removeRx,
     setRxUploaded,
     setPayMethod,
     placeOrder,
